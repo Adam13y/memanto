@@ -195,6 +195,34 @@ class Memanto:
         :meth:`remember` (``content`` required)."""
         return self._call(self.client.batch_remember, memories)
 
+    def extract(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        dry_run: bool = False,
+        max_memories: int = 20,
+        ai_model: str | None = None,
+    ) -> dict[str, Any]:
+        """Extract typed memories from chat turns and store them.
+
+        *messages* are ``{"role": ..., "content": ...}`` dicts. With
+        ``dry_run=True`` the candidates are returned without being stored.
+
+        Returns a dict with the ``candidates`` and, unless ``dry_run``, the
+        batch result (``successful``, ``failed``, ``results``, ...).
+
+        Raises:
+            NothingToExtractError: If the conversation held nothing worth
+                remembering (a ``ValueError``; importable from ``memanto``).
+        """
+        return self._call(
+            self.client.extract_memories_from_conversation,
+            messages,
+            dry_run=dry_run,
+            max_memories=max_memories,
+            ai_model=ai_model,
+        )
+
     def update_memory(self, memory_id: str, **updates: Any) -> dict[str, Any]:
         """Update fields of a memory, e.g. ``content=...`` or ``tags=[...]``."""
         return self._call(self.client.update_memory, memory_id, updates)
