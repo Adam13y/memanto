@@ -801,6 +801,7 @@ class SdkClient:
 
         from memanto.app.services.conversation_memory_extraction_service import (
             ConversationMemoryExtractionService,
+            NothingToExtractError,
         )
 
         service = ConversationMemoryExtractionService(self._get_moorcheh())
@@ -817,6 +818,11 @@ class SdkClient:
                 "candidates": candidates,
                 "count": len(candidates),
             }
+
+        if not candidates:
+            raise NothingToExtractError(
+                "Memory extraction produced no usable candidates"
+            )
 
         result = self.batch_remember(agent_id=agent_id, memories=candidates)
         return {

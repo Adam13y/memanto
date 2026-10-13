@@ -2,6 +2,7 @@ import pytest
 
 from memanto.app.services.conversation_memory_extraction_service import (
     ConversationMemoryExtractionService,
+    NothingToExtractError,
 )
 
 
@@ -106,6 +107,48 @@ def test_extract_rejects_non_json_answers():
             namespace="memanto_agent_test",
             messages=[{"role": "user", "content": "Remember that I like Python."}],
         )
+
+
+def test_extract_rejects_non_json_answers_as_unusable_not_empty():
+    service = ConversationMemoryExtractionService(FakeClient("not json"))
+
+    with pytest.raises(ValueError) as exc_info:
+        service.extract(
+            namespace="memanto_agent_test",
+            messages=[{"role": "user", "content": "Remember that I like Python."}],
+        )
+    assert not isinstance(exc_info.value, NothingToExtractError)
+
+
+@pytest.mark.parametrize("answer", ["[]", "Nothing to store: []", "```json\n[]\n```"])
+def test_extract_empty_array_raises_nothing_to_extract(answer):
+    service = ConversationMemoryExtractionService(FakeClient(answer))
+
+    with pytest.raises(NothingToExtractError, match="nothing worth remembering"):
+        service.extract(
+            namespace="memanto_agent_test",
+            messages=[{"role": "user", "content": "hi"}],
+        )
+
+
+def test_nothing_to_extract_is_a_value_error():
+    """Existing callers catch a failed extraction as ValueError."""
+    assert issubclass(NothingToExtractError, ValueError)
+
+
+def test_extract_with_only_unusable_candidates_returns_empty_list():
+    """Unchanged: a non-empty array whose items are all dropped returns []."""
+    service = ConversationMemoryExtractionService(
+        FakeClient('[{"type": "fact", "title": "t", "content": ""}]')
+    )
+
+    assert (
+        service.extract(
+            namespace="memanto_agent_test",
+            messages=[{"role": "user", "content": "hi"}],
+        )
+        == []
+    )
 
 
 def test_extract_requires_messages():
@@ -252,3 +295,44 @@ def test_redact_sensitive_data_helper():
         redact_sensitive_data(aws_secret_unquoted)
         == "AWS_SECRET_ACCESS_KEY=[REDACTED_CREDENTIAL]"
     )
+
+
+@pytest.mark.parametrize(
+    "client_path", ["direct_client.DirectClient", "sdk_client.SdkClient"]
+)
+@pytest.mark.parametrize(
+    "answer", ["[]", '[{"type": "fact", "title": "t", "content": ""}]']
+)
+def test_client_extract_with_nothing_to_store_raises_without_writing(
+    client_path, answer
+):
+    from importlib import import_module
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    module_name, class_name = client_path.split(".")
+    client_cls = getattr(import_module(f"memanto.cli.client.{module_name}"), class_name)
+    session = SimpleNamespace(namespace="memanto_agent_bot", session_id="s1")
+
+    with (
+        patch.object(
+            client_cls, "_get_validated_session_for_agent", return_value=session
+        ),
+        patch.object(client_cls, "_get_moorcheh", return_value=FakeClient(answer)),
+        patch.object(client_cls, "batch_remember") as batch_remember,
+    ):
+        client = client_cls.__new__(client_cls)
+        with pytest.raises(NothingToExtractError):
+            client.extract_memories_from_conversation(
+                agent_id="bot", messages=[{"role": "user", "content": "hi"}]
+            )
+        # A dry run of the same conversation still previews zero candidates.
+        if answer != "[]":
+            preview = client.extract_memories_from_conversation(
+                agent_id="bot",
+                messages=[{"role": "user", "content": "hi"}],
+                dry_run=True,
+            )
+            assert preview["candidates"] == [] and preview["count"] == 0
+
+    batch_remember.assert_not_called()

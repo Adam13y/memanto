@@ -53,6 +53,15 @@ def redact_sensitive_data(text: str) -> str:
     return text
 
 
+class NothingToExtractError(ValueError):
+    """The conversation held nothing worth remembering.
+
+    Subclasses ``ValueError`` so callers that catch a failed extraction as a
+    ``ValueError`` keep working, while callers that can store nothing (such as
+    a per-turn memory hook) can tell this case from unusable LLM output.
+    """
+
+
 class ConversationMemoryExtractionService:
     """Extract typed memory candidates from conversation turns."""
 
@@ -104,6 +113,7 @@ class ConversationMemoryExtractionService:
             raise ValueError("Memory extraction returned an empty response")
 
         empty_result: list[dict[str, Any]] | None = None
+        nothing_to_extract = False
         for parsed in iter_json_arrays(text):
             try:
                 normalized = self._normalize_candidates(
@@ -112,11 +122,18 @@ class ConversationMemoryExtractionService:
                 if normalized:
                     return normalized
                 empty_result = normalized
+            except NothingToExtractError:
+                nothing_to_extract = True
             except ValueError:
                 continue
 
         if empty_result is not None:
             return empty_result
+
+        if nothing_to_extract:
+            raise NothingToExtractError(
+                "The conversation held nothing worth remembering"
+            )
 
         raise ValueError("Memory extraction did not return valid JSON")
 
@@ -276,6 +293,8 @@ class ConversationMemoryExtractionService:
                 break
 
         if not normalized and not parsed:
-            raise ValueError("Memory extraction produced no usable candidates")
+            raise NothingToExtractError(
+                "Memory extraction produced no usable candidates"
+            )
 
         return normalized
