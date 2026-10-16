@@ -220,6 +220,8 @@ def load_export(file_path: Path) -> dict[str, Any]:
     """Load a previously-produced provider export JSON from disk."""
     if not file_path.exists():
         raise FileNotFoundError(f"Export file not found: {file_path}")
+    if file_path.stat().st_size > 200 * 1024 * 1024:
+        raise ValueError(f"Export file exceeds size limit (200MB): {file_path}")
     data = json.loads(file_path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError(f"Export file must be a JSON object: {file_path}")

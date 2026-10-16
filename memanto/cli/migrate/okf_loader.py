@@ -73,8 +73,11 @@ _NOFOLLOW_ERRNOS: set[int] = {
 
 
 def _read_open_regular_file(fd: int, display_path: Path) -> str:
-    if not stat.S_ISREG(os.fstat(fd).st_mode):
+    st = os.fstat(fd)
+    if not stat.S_ISREG(st.st_mode):
         raise ValueError(f"OKF document is not a regular file: {display_path}")
+    if st.st_size > 50 * 1024 * 1024:
+        raise ValueError(f"OKF document exceeds size limit (50MB): {display_path}")
 
     with os.fdopen(os.dup(fd), "r", encoding="utf-8") as stream:
         return stream.read()
@@ -101,8 +104,10 @@ def _read_document_at(directory_fd: int, name: str, display_path: Path) -> str:
 
 
 def _read_directory_documents(
-    directory_fd: int, prefix: Path = Path()
+    directory_fd: int, prefix: Path = Path(), depth: int = 0
 ) -> list[tuple[Path, str]]:
+    if depth > 32:
+        raise ValueError(f"OKF bundle directory too deep (limit 32): {prefix}")
     try:
         with os.scandir(directory_fd) as entries:
             names = sorted(entry.name for entry in entries)
@@ -153,7 +158,9 @@ def _read_directory_documents(
                     raise ValueError(
                         f"OKF bundle contains an unsafe directory: {relative_path}"
                     )
-                documents.extend(_read_directory_documents(child_fd, relative_path))
+                documents.extend(
+                    _read_directory_documents(child_fd, relative_path, depth + 1)
+                )
             finally:
                 os.close(child_fd)
             continue
@@ -300,6 +307,8 @@ def _load_documents_portable(
     )
 
     if root.is_file():
+        if root.stat().st_size > 50 * 1024 * 1024:
+            raise ValueError(f"OKF document exceeds size limit (50MB): {root}")
         return root.parent, [(root, root.read_text(encoding="utf-8"))]
 
     memories_dir = root / "memories"
@@ -319,16 +328,25 @@ def _load_documents_portable(
 
         current = file_path
         is_unsafe = False
+        depth = 0
         while current != root:
             if current.is_symlink():
                 is_unsafe = True
                 break
             current = current.parent
+            depth += 1
+            if depth > 32:
+                raise ValueError(
+                    f"OKF bundle directory too deep (limit 32): {file_path}"
+                )
 
         if is_unsafe:
             raise ValueError(
                 f"OKF bundle contains a symbolic-link document or directory: {file_path}"
             )
+
+        if file_path.stat().st_size > 50 * 1024 * 1024:
+            raise ValueError(f"OKF document exceeds size limit (50MB): {file_path}")
 
         documents.append((file_path, file_path.read_text(encoding="utf-8")))
 

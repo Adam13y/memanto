@@ -379,7 +379,11 @@ def _identity_probe_app():
     @app.get("/probe")
     def probe():
         identity = detect_client()
-        return {"tool": identity.tool, "project_dir": identity.project_dir}
+        return {
+            "tool": identity.tool,
+            "display": identity.display,
+            "project_dir": identity.project_dir,
+        }
 
     return app
 
@@ -393,7 +397,11 @@ def test_http_caller_is_named_by_its_headers():
         headers={"X-Memanto-Client": "Cursor", "X-Memanto-Project": "/repo"},
     )
 
-    assert resp.json() == {"tool": "cursor", "project_dir": "/repo"}
+    assert resp.json() == {
+        "tool": "cursor",
+        "display": "Cursor",
+        "project_dir": "/repo",
+    }
 
 
 def test_anonymous_http_caller_is_never_attributed_to_the_server_env(monkeypatch):

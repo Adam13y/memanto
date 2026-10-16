@@ -585,11 +585,32 @@ async def _do_restart_onprem_backend(_asyncio, subprocess, _httpx):
 async def update_api_key(body: dict, _: None = Depends(_require_local)):
     """
     Update the Moorcheh API key from the Web UI.
-    Expects: {"api_key": "new-key-value"}
+    Expects: {"api_key": "new-key-value", "current_key": "existing-key"}
+
+    When a key is already configured, the caller must supply the correct
+    current_key to authorize the replacement.  This prevents a loopback
+    attacker (e.g. via DNS rebinding) from silently swapping credentials.
     """
+    import secrets as _secrets
+
     new_key = body.get("api_key", "").strip()
     if not new_key:
         raise HTTPException(status_code=400, detail="API key cannot be empty")
+
+    existing = (_config_manager.get_api_key() or "").strip()
+    if existing:
+        presented = body.get("current_key", "").strip()
+        if not presented:
+            raise HTTPException(
+                status_code=403,
+                detail="current_key is required to replace an existing API key.",
+            )
+        if not _secrets.compare_digest(presented, existing):
+            raise HTTPException(
+                status_code=403,
+                detail="current_key does not match the configured API key.",
+            )
+
     _config_manager.set_api_key(new_key)
     preview = f"••••••••{new_key[-6:]}" if len(new_key) > 6 else "***"
     return {"status": "updated", "api_key_preview": preview}

@@ -3645,7 +3645,7 @@
           "Web UI"
         ],
         "summary": "Update Api Key",
-        "description": "Update the Moorcheh API key from the Web UI.\nExpects: {\"api_key\": \"new-key-value\"}",
+        "description": "Update the Moorcheh API key from the Web UI.\nExpects: {\"api_key\": \"new-key-value\", \"current_key\": \"existing-key\"}\n\nWhen a key is already configured, the caller must supply the correct\ncurrent_key to authorize the replacement.  This prevents a loopback\nattacker (e.g. via DNS rebinding) from silently swapping credentials.",
         "operationId": "update_api_key_api_ui_api_key_put",
         "requestBody": {
           "content": {

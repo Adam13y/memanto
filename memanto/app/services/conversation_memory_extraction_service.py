@@ -36,6 +36,17 @@ KV_CREDENTIAL_UNQUOTED = re.compile(
     r"""(?i)\b((?:api[_-]?key|secret[_-]?key|secret[_-]?access[_-]?key|aws[_-]?secret[_-]?access[_-]?key|client[_-]?secret|password|passwd|auth[_-]?token)\s*[:=]\s*)[^\s,;'"}\]]{1,}"""
 )
 
+# Neutralize any case/whitespace variant of the closing tag (MEM-1852)
+_CLOSING_TAG_PATTERN = re.compile(
+    r"<\s*/\s*conversation_content(?![A-Za-z0-9_-])",
+    re.IGNORECASE,
+)
+
+
+def _defang_closing_tag(text: str) -> str:
+    """Neutralize closing tags so untrusted text cannot break out of <conversation_content>."""
+    return _CLOSING_TAG_PATTERN.sub("<\\\\/conversation_content", text)
+
 
 def redact_sensitive_data(text: str) -> str:
     """Sanitize secrets, API keys, passwords, and tokens before persistence."""
@@ -163,13 +174,9 @@ class ConversationMemoryExtractionService:
         lines: list[str] = []
         total = 0
         for i, message in enumerate(messages):
-            # Escape the closing tag to prevent prompt injection breakouts
-            safe_role = message["role"].replace(
-                "</conversation_content>", "<\\/conversation_content>"
-            )
-            safe_content = message["content"].replace(
-                "</conversation_content>", "<\\/conversation_content>"
-            )
+            # Escape the closing tag across case/whitespace variants to prevent breakouts (MEM-1852)
+            safe_role = _defang_closing_tag(message["role"])
+            safe_content = _defang_closing_tag(message["content"])
             line = f"{safe_role.strip()}: {safe_content.strip()}"
             # Account for the newline separator that join() adds between
             # accepted messages.  Without this, two lines whose lengths sum
@@ -232,14 +239,14 @@ class ConversationMemoryExtractionService:
             # prompt injection. Drop candidates whose content or title looks like an
             # embedded directive/override rather than a genuine memory.
             _INJECTION_PATTERNS = (
-                r"\bignore previous instructions\b",
-                r"\bignore prior instructions\b",
-                r"\bsystem override\b",
+                r"\bignore\s+previous\s+instructions\b",
+                r"\bignore\s+prior\s+instructions\b",
+                r"\bsystem\s+override\b",
                 r"^system:\s*",
                 r"\bexfiltrate\b",
-                r"\bsend all memories\b",
-                r"\boverride previous\b",
-                r"\bdisregard previous\b",
+                r"\bsend\s+all\s+memories\b",
+                r"\boverride\s+previous\b",
+                r"\bdisregard\s+previous\b",
             )
             title = str(item.get("title", "")).strip()
 

@@ -5,6 +5,7 @@ Tests the session and agent services directly without HTTP layer.
 """
 
 import errno
+import json
 import os
 import stat
 import sys
@@ -2201,7 +2202,6 @@ class TestMEMANTOArchitecture:
 
 def test_conflict_report_handles_non_object_json_items(tmp_path, monkeypatch):
     """Malformed agent conflict payloads should degrade to an empty report."""
-    import json
     from unittest.mock import MagicMock
 
     from memanto.app.services import daily_analysis_service as module
@@ -2890,9 +2890,13 @@ def test_ui_static_xss_escapes():
     assert "${escHtml(agent.agent_id)}" in ui_html
     assert "${escHtml(m.provenance)}" in ui_html
     assert "${escHtml(e.message)}" in ui_html
-    assert 'data-memory-id="${attrEsc(memId)}"' in ui_html
-    assert 'data-connection-name="${attrEsc(conn.name)}"' in ui_html
-    assert 'data-project-path="${attrEsc(p.path)}"' in ui_html
+    assert 'data-memory-id="${escHtml(memId)}"' in ui_html
+    assert "sel.replaceChildren(new Option('All Sources', ''))" in ui_html
+    assert "sel.add(new Option(value, value))" in ui_html
+    assert "title=\"${escHtml(m.id || '')}\"" in ui_html
+    assert "${escHtml(fmtDate(m.created_at))}" in ui_html
+    assert 'data-connection-name="${escHtml(conn.name)}"' in ui_html
+    assert 'data-project-path="${escHtml(p.path)}"' in ui_html
     assert (
         "confirmDisconnect(this.dataset.connectionName, "
         "this.dataset.projectPath, false, this)" in ui_html
@@ -2915,6 +2919,8 @@ def test_ui_static_xss_escapes():
         "${m.source ||",
         ">${m.source}</span>",
         "Source: ${m.source ||",
+        'sources.map(s => `<option value="${escHtml(s)}"',
+        "${fmtDate(m.created_at)}",
         "${m.content || m.text",
         "ID: ${memId ||",
         "Score: ${m.score",

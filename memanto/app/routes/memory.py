@@ -103,6 +103,31 @@ def _validate_memory_type_filters(value: list[str] | None) -> list[str] | None:
     return value
 
 
+_RECALL_TAG_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _validate_recall_tag_filters(value: list[str] | None) -> list[str] | None:
+    """Reject tag filter values that contain characters invalid in Moorcheh query syntax.
+
+    Tags are embedded as ``#<tag>`` tokens in Moorcheh search queries.
+    Values with spaces, colons, hash signs, or control characters would
+    cause _validate_filter_token() inside search_memories() to raise a
+    ValueError that is caught as a generic Exception and re-raised as a
+    MemoryOperationError — producing HTTP 500 from user-controlled input.
+    Validating here returns HTTP 422 with a clear message instead.
+    """
+    if value is None:
+        return value
+    for tag in value:
+        stripped = str(tag).strip()
+        if not stripped or not _RECALL_TAG_RE.fullmatch(stripped):
+            raise ValueError(
+                f"Invalid tag filter '{tag}': only letters, digits, '.', '_', "
+                "and '-' are allowed in recall tag filters."
+            )
+    return value
+
+
 STATUS_FILTER_DESCRIPTION = (
     "Lifecycle filter: 'all' (default) returns active and expired memories "
     "together so callers can label them, 'active' or 'expired' narrows to one."
@@ -167,6 +192,12 @@ class RecallRequest(BaseModel):
         """Reject recall filters that are not supported memory types."""
         return _validate_memory_type_filters(value)
 
+    @field_validator("tags")
+    @classmethod
+    def tag_filters_must_be_valid(cls, value: list[str] | None) -> list[str] | None:
+        """Reject tag filter values that would cause a 500 in the query builder."""
+        return _validate_recall_tag_filters(value)
+
 
 def _parse_recall_temporal_bound(v: object, *, end_of_day: bool) -> datetime:
     # End-of-day must be END_OF_DAY (23:59:59.999999), matching
@@ -215,6 +246,12 @@ class RecallAsOfRequest(BaseModel):
         """Reject as-of recall filters that are not supported memory types."""
         return _validate_memory_type_filters(value)
 
+    @field_validator("tags")
+    @classmethod
+    def tag_filters_must_be_valid(cls, value: list[str] | None) -> list[str] | None:
+        """Reject tag filter values that would cause a 500 in the query builder."""
+        return _validate_recall_tag_filters(value)
+
     @field_validator("as_of", mode="before")
     @classmethod
     def parse_as_of(cls, v: object) -> datetime:
@@ -260,6 +297,12 @@ class RecallChangedSinceRequest(BaseModel):
     def type_filters_must_be_valid(cls, value: list[str] | None) -> list[str] | None:
         """Reject changed-since recall filters that are not supported memory types."""
         return _validate_memory_type_filters(value)
+
+    @field_validator("tags")
+    @classmethod
+    def tag_filters_must_be_valid(cls, value: list[str] | None) -> list[str] | None:
+        """Reject tag filter values that would cause a 500 in the query builder."""
+        return _validate_recall_tag_filters(value)
 
     @field_validator("since", mode="before")
     @classmethod
@@ -317,6 +360,12 @@ class RecallRecentRequest(BaseModel):
     def type_filters_must_be_valid(cls, value: list[str] | None) -> list[str] | None:
         """Reject recent-recall filters that are not supported memory types."""
         return _validate_memory_type_filters(value)
+
+    @field_validator("tags")
+    @classmethod
+    def tag_filters_must_be_valid(cls, value: list[str] | None) -> list[str] | None:
+        """Reject tag filter values that would cause a 500 in the query builder."""
+        return _validate_recall_tag_filters(value)
 
     @field_validator("created_after", mode="before")
     @classmethod
