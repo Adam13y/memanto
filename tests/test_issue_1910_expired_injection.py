@@ -15,6 +15,7 @@ Drop into memanto/tests/ and run:  pytest tests/test_issue_1910_expired_injectio
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import stat
@@ -33,6 +34,11 @@ HOOK = (
 )
 
 SYNC_QUERY_TYPES = ["instruction", "preference", "goal"]
+
+# Hook tests run a POSIX sh stub named `memanto`; Windows cannot run it.
+POSIX_ONLY = pytest.mark.skipif(
+    sys.platform == "win32", reason="fake memanto stub is a POSIX sh script"
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -335,7 +341,7 @@ def _run_hook(tmp_path, sync_stdout):
     }
     return subprocess.run(
         [sys.executable, str(HOOK)],
-        input=f'{{"cwd": "{project}", "session_id": "t10"}}',
+        input=json.dumps({"cwd": str(project), "session_id": "t10"}),
         capture_output=True,
         text=True,
         env=env,
@@ -343,6 +349,7 @@ def _run_hook(tmp_path, sync_stdout):
     ).stdout
 
 
+@POSIX_ONLY
 def test_10_hook_does_not_advertise_stale_memory_md(tmp_path):
     out = _run_hook(tmp_path, "OK Recalled 2 dynamic memories!")
     assert "Read MEMORY.md" not in out, out
@@ -350,6 +357,7 @@ def test_10_hook_does_not_advertise_stale_memory_md(tmp_path):
     assert "2 active memories" in out, out  # count comes from the sync output
 
 
+@POSIX_ONLY
 def test_10b_hook_reports_empty_sync(tmp_path):
     out = _run_hook(
         tmp_path, "No active dynamic memories found. Cleared dynamic sections (if any)."
